@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#166534"><title>Student QR Verification</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f1f5f9;color:#172033;font-family:Arial,sans-serif}
+header{background:#166534;color:white;padding:17px 20px;font-weight:800}main{max-width:680px;margin:22px auto;padding:0 14px}
+.panel{background:#fff;border-radius:17px;padding:22px;text-align:center;box-shadow:0 4px 22px #0f172a0a}
+h1{font-size:23px;margin:0 0 8px}.muted{color:#64748b;font-size:14px;line-height:1.5}
+button{border:0;border-radius:10px;padding:13px 18px;background:#15803d;color:white;font-size:16px;font-weight:700;margin:5px}
+.danger{background:#dc2626}.hidden{display:none!important}#reader{width:100%;max-width:520px;margin:18px auto;border-radius:12px;overflow:hidden;background:#0b1220}
+#reader video{width:100%!important;max-height:430px;object-fit:cover}.result{margin:16px auto 0;padding:16px;border-radius:12px;background:#dcfce7;color:#166534;text-align:left;max-width:520px;line-height:1.55}
+.result.error{background:#fee2e2;color:#991b1b}.result h3{margin:0 0 10px;text-align:center}.result p{margin:7px 0;font-size:14px}
+footer{text-align:center;color:#64748b;font-size:12px;padding:20px}
+</style></head><body>
+<header>STUDENT QR VERIFICATION</header><main><section class="panel">
+<h1>Student ID Verification</h1>
+<p class="muted">Tap Open Camera and allow camera access. Phones prefer the rear camera; computers use an available webcam.</p>
+<button id="startBtn" onclick="startScanner()">Open Camera</button><button id="stopBtn" class="danger hidden" onclick="stopScanner()">Stop Camera</button>
+<div id="reader"></div><div id="result" aria-live="polite"></div>
+</section></main><footer>Official Student Verification</footer>
+<script>
+// Replace this with your deployed Apps Script Web App URL ending in /exec.
+const GAS_WEB_APP_URL='PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+let scanner=null,busy=false;
+function showResult(message,error){const b=document.createElement('div');b.className='result'+(error?' error':'');b.textContent=message;document.getElementById('result').replaceChildren(b);}
+function verifyToken(token){
+ if(!GAS_WEB_APP_URL||GAS_WEB_APP_URL.includes('PASTE_YOUR_')){showResult('Setup incomplete: add your Apps Script Web App URL in this file.',true);return;}
+ const cb='studentVerifyCallback';
+ window[cb]=function(res){delete window[cb];const old=document.getElementById('verifyRequest');if(old)old.remove();
+  if(!res||!res.success){showResult(res&&res.message?res.message:'Verification failed.',true);return;}
+  const s=res.student||{},box=document.createElement('div');box.className='result';
+  const h=document.createElement('h3');h.textContent='✓ Student Verified Successfully';box.appendChild(h);
+  ['Student Name: '+(s.name||'-'),'Student ID: '+(s.id||'-'),'Class: '+(s.className||'-'),'Roll: '+(s.roll||'-'),res.emailSent?'Guardian email notification sent ✓':'Guardian email was not sent.'].forEach(t=>{const p=document.createElement('p');p.textContent=t;box.appendChild(p);});
+  document.getElementById('result').replaceChildren(box);
+ };
+ const script=document.createElement('script');script.id='verifyRequest';script.onerror=()=>{delete window[cb];showResult('Could not contact verification server. Check Apps Script URL and deployment access.',true);};
+ script.src=GAS_WEB_APP_URL+'?api=verify&token='+encodeURIComponent(token)+'&callback='+encodeURIComponent(cb)+'&_='+Date.now();document.body.appendChild(script);
+}
+async function startScanner(){
+ if(scanner||busy)return;
+ if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showResult('Camera access requires an HTTPS page. Open the GitHub Pages HTTPS address in Chrome.',true);return;}
+ if(typeof Html5Qrcode==='undefined'){showResult('QR scanner library did not load. Check internet and reload.',true);return;}
+ busy=true;document.getElementById('startBtn').classList.add('hidden');document.getElementById('stopBtn').classList.remove('hidden');document.getElementById('result').replaceChildren();
+ try{
+  scanner=new Html5Qrcode('reader',{verbose:false});let choice={facingMode:'environment'};
+  try{const cams=await Html5Qrcode.getCameras();if(cams&&cams.length){const rear=cams.find(c=>/back|rear|environment|world/i.test(c.label));choice=(rear||cams[0]).id;}}catch(e){}
+  await scanner.start(choice,{fps:10,qrbox:(w,h)=>{const side=Math.floor(Math.min(w,h)*.72);return{width:side,height:side};},aspectRatio:1,disableFlip:false},
+   async decoded=>{if(!scanner||!decoded)return;await stopScanner();showResult('QR detected. Verifying student…',false);verifyToken(decoded.trim());},()=>{});
+  document.getElementById('reader').scrollIntoView({behavior:'smooth',block:'center'});
+ }catch(err){const msg=err&&err.message?err.message:String(err);await stopScanner();showResult('Camera could not start. Allow camera permission for this scanner page and close other apps using the camera. Details: '+msg,true);}
+ finally{busy=false;}
+}
+async function stopScanner(){const active=scanner;scanner=null;if(active){try{if(active.isScanning)await active.stop();}catch(e){}try{active.clear();}catch(e){}}
+ document.getElementById('startBtn').classList.remove('hidden');document.getElementById('stopBtn').classList.add('hidden');}
+</script></body></html>
